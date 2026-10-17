@@ -170,6 +170,7 @@
     var fav = isFav(state, entry.bank.id, qid);
     var isLast = s.index === s.questionIds.length - 1;
     var showTimer = !state.settings || state.settings.showTimer !== false;
+    var wrongNow = Quiz.wrongQuestionIds(s).length;   // 本轮已经做错几道
 
     var html = ''
       + '<div class="topbar">'
@@ -184,6 +185,7 @@
       + '  <span>答对 <b>' + st.correct + '</b></span>'
       + '  <span>· 已作答 ' + st.answered + '</span>'
       + (showTimer ? '<span id="timer">⏱ ' + U.fmtDuration(s.elapsedMs) + '</span>' : '')
+      + (wrongNow ? '<button class="mini-btn" data-action="redo-wrong">错题重做 ' + wrongNow + '</button>' : '')
       + '</div>'
       + '<div class="progress"><i style="width:' + pct(s.index + 1, s.questionIds.length) + '%"></i></div>';
 
@@ -191,6 +193,7 @@
     html += '<div class="q-head">' + typeBadge(q.type)
       + '<span class="muted tiny">' + esc(entry.bank.title) + ' · 原题号 ' + q.no + '</span>'
       + (s.mode === 'redo' ? '<span class="badge redo">重刷</span>' : '')
+      + (s.origin === 'wrong-redo' ? '<span class="badge redo">错题重做</span>' : '')
       + (q.type === 'multiple' ? '<span class="muted tiny">（多选，全部选对才得分）</span>' : '') + '</div>';
 
     // 一提交就立刻把答案摆到最上面，不用等交卷、也不用往下找
@@ -309,10 +312,13 @@
       + '    <div class="stat"><div class="num muted">' + st.invalid + '</div><div class="lbl">无效题</div></div>'
       + '  </div>'
       + '  <div class="actions" style="justify-content:center">'
-      + (wrong.length ? '<button class="btn btn-primary" data-action="retry-wrong">只练这 ' + wrong.length + ' 道错题</button>' : '')
+      + (wrong.length ? '<button class="btn btn-primary" data-action="redo-wrong">错题重做（' + wrong.length + ' 题）</button>' : '')
       + '    <button class="btn" data-action="retry-all">重刷本次（覆盖记录）</button>'
+      + (s.parentId ? '<button class="btn btn-ghost" data-action="open-round" data-round="' + s.parentId + '">回到上一轮</button>' : '')
       + '    <button class="btn btn-ghost" data-action="finish-to-wrong">看错题本</button>'
       + '  </div>'
+      + '  <div class="round-note">错题重做会另开一轮独立的练习，这一轮原样存档：'
+      + '随时能从「我的 → 测试记录」点回来，成绩与每题记录都不会变。</div>'
       + '</section>';
 
     /* ---- 简单分析 ---- */
@@ -454,6 +460,11 @@
     var wrongN = wrongList(state).length;
     var favN = favCount(state);
     var histN = (state.history || []).length;
+    var roundN = (state.rounds || []).length;
+    var curWrong = state.session ? Quiz.wrongQuestionIds(state.session).length : 0;
+    var redoMeta = state.session
+      ? (curWrong ? '本轮 ' + curWrong + ' 题' : '本轮没错题')
+      : (roundN ? '从最近一轮抽' : '');
 
     var html = topbar('我的', 'banks');
 
@@ -480,6 +491,9 @@
       + '<button class="nav-row" data-action="redo-done"><span class="nav-ic">🔁</span>'
       + '<span class="nav-label">重刷做过的题</span>'
       + '<span class="nav-meta">' + doneN + '</span><span class="nav-go">›</span></button>'
+      + '<button class="nav-row" data-action="redo-wrong"><span class="nav-ic">🎯</span>'
+      + '<span class="nav-label">错题重做</span>'
+      + '<span class="nav-meta">' + esc(redoMeta) + '</span><span class="nav-go">›</span></button>'
       + navRow('wrong', '📕', '错题本', String(wrongN))
       + navRow('favorites', '★', '我的收藏', String(favN))
       + navRow('support', '💬', '智能客服', '')
@@ -569,20 +583,31 @@
     var html = topbar('测试记录', 'me',
       hist.length ? '<button class="btn small" data-action="clear-history">清空</button>' : '');
 
-    if (!hist.length) return html + '<div class="empty">还没有测试记录。<br><span class="tiny">答一题就会记一笔，没做完也算。</span></div>';
+    if (!hist.length) return html + '<div class="empty">还没有测试记录。<br><span class="tiny">答一题就会记一笔，没做完也算；每一轮都能点回去看。</span></div>';
 
     html += '<div class="list" style="margin-top:14px">';
     hist.forEach(function (h) {
       var tone = h.accuracy >= 80 ? 'ok' : (h.accuracy >= 60 ? '' : 'bad');
       html += '<div class="card hist-row">'
         + '  <div class="row"><b>' + esc(h.title) + (h.scopeLabel ? ' · ' + esc(h.scopeLabel) : '') + '</b>'
-        + '<span class="spacer"></span><span class="hist-score ' + tone + '">' + h.accuracy + '%</span></div>'
+        + '<span class="spacer"></span>'
+        + (h.answered
+            ? '<span class="hist-score ' + tone + '">' + h.accuracy + '%</span>'
+            : '<span class="hist-score muted">未作答</span>')
+        + '</div>'
         + '  <div class="meta-line">'
         + (h.finished ? '<span class="tag ok">已交卷</span>' : '<span class="tag warn">未完成</span>')
+        + (h.origin === 'wrong-redo' ? '<span class="tag">错题重做</span>' : '')
         + (h.mode === 'redo' ? '<span class="tag">重刷</span>' : '')
         + '<span class="tag">对 ' + h.correct + ' · 错 ' + h.wrong + (h.unanswered ? ' · 未答 ' + h.unanswered : '') + '</span>'
+        + '<span class="tag">' + h.total + ' 题</span>'
         + '<span class="tag">用时 ' + U.fmtDuration(h.elapsedMs) + '</span>'
         + '<span class="tag">' + fmtWhen(h.at) + '</span>'
+        + '  </div>'
+        + '  <div class="actions">'
+        + '    <button class="btn small" data-action="open-round" data-round="' + h.id + '">'
+        + (h.finished ? '打开这一轮' : '继续这一轮') + '</button>'
+        + (h.wrong ? '<button class="btn small" data-action="redo-wrong" data-round="' + h.id + '">错题重做（' + h.wrong + '）</button>' : '')
         + '  </div>'
         + '</div>';
     });

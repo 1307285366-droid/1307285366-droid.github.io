@@ -280,6 +280,79 @@ check('会话能标记为重刷模式',
   Quiz.createSession({ title: 'r', questionIds: ['web-1'], mode: 'redo' }).mode === 'redo'
     && Quiz.createSession({ title: 'p', questionIds: ['web-1'] }).mode === 'practice');
 
+/* ================= 多轮次存档 ================= */
+check('新会话默认没有父轮次',
+  Quiz.createSession({ title: 'x', questionIds: ['web-1'] }).parentId === null);
+check('错题重做出来的轮次记得父轮次与来源', (function () {
+  const r = Quiz.createSession({ title: 'x', questionIds: ['web-1'], parentId: 'p1', origin: 'wrong-redo' });
+  return r.parentId === 'p1' && r.origin === 'wrong-redo';
+})());
+check('每次组卷的轮次 id 都不同',
+  Quiz.createSession({ title: 'x', questionIds: ['web-1'] }).id
+    !== Quiz.createSession({ title: 'x', questionIds: ['web-1'] }).id);
+check('测试记录带上了轮次来源，便于回看', (function () {
+  const r = Quiz.createSession({ title: 'x', questionIds: ['web-1'], parentId: 'p1', origin: 'wrong-redo' });
+  const rec = Quiz.recordOf(r, true);
+  return rec.id === r.id && rec.origin === 'wrong-redo' && rec.parentId === 'p1' && rec.finished === true;
+})());
+
+check('默认数据里带 rounds / currentRoundId', (function () {
+  const d = Store.defaults();
+  return Array.isArray(d.rounds) && d.rounds.length === 0 && d.currentRoundId === null && !('session' in d);
+})());
+check('旧版本的 session 会被迁移成第一轮', (function () {
+  const legacy = {
+    version: 3,
+    session: { id: 'old-1', title: '旧练习', questionIds: ['web-1', 'web-2'], answers: {}, index: 1,
+      elapsedMs: 5000, startedAt: 1, finished: false },
+  };
+  const out = Store.normalize(legacy);
+  return out.rounds.length === 1 && out.rounds[0].id === 'old-1' && out.currentRoundId === 'old-1'
+    && out.rounds[0].index === 1 && !('session' in out);
+})());
+check('缺失的轮次字段会被补全', (function () {
+  const out = Store.normalize({ rounds: [{ id: 'r1', questionIds: ['web-1'] }] });
+  const r = out.rounds[0];
+  return typeof r.answers === 'object' && typeof r.draft === 'object' && r.mode === 'practice'
+    && r.scopeLabel === '' && r.finished === false && r.index === 0 && r.elapsedMs === 0
+    && out.currentRoundId === 'r1';
+})());
+check('坏掉的轮次会被丢掉', (function () {
+  const out = Store.normalize({
+    rounds: [
+      { id: 'good', questionIds: ['web-1'] },
+      { questionIds: ['web-2'] },          // 没有 id
+      { id: 'empty', questionIds: [] },    // 没有题目
+      null,
+      'nope',
+    ],
+  });
+  return out.rounds.length === 1 && out.rounds[0].id === 'good';
+})());
+check('currentRoundId 指向不存在的轮次时自动纠正', (function () {
+  const out = Store.normalize({ rounds: [{ id: 'a', questionIds: ['web-1'] }], currentRoundId: 'gone' });
+  return out.currentRoundId === 'a';
+})());
+check('每一轮的各题作答互不影响（独立快照）', (function () {
+  const r1 = Quiz.createSession({ title: 'r1', questionIds: ['web-1'] });
+  const r2 = Quiz.createSession({ title: 'r2', questionIds: ['web-1'] });
+  Quiz.submit(r1, 'web-1', ['A']);
+  return Object.keys(r1.answers).length === 1 && Object.keys(r2.answers).length === 0;
+})());
+check('轮次 / 会话存进磁盘时不会存成两份', (function () {
+  const fake = {
+    rounds: [{ id: 'r1', questionIds: ['web-1'], answers: {}, draft: {} }],
+    currentRoundId: 'r1',
+  };
+  Object.defineProperty(fake, 'session', {
+    enumerable: false, configurable: true,
+    get() { return fake.rounds[0]; },
+  });
+  const text = JSON.stringify(fake);
+  const back = JSON.parse(text);
+  return text.indexOf('"session"') < 0 && back.rounds.length === 1 && back.rounds[0].id === 'r1';
+})());
+
 // 打印两道样例，便于人工确认转换效果
 const sample = payload.banks[1].chapters[0].questions[15];
 console.log('\n样例题目（java-16）：');

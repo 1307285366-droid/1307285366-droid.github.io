@@ -9,7 +9,7 @@
   var UI = global.UI;
   var Support = global.Support;
 
-  var state = Store.load(Auth.ownerKey());
+  var state = adoptRounds(Store.load(Auth.ownerKey()));
   var appEl = null;
   var tick = null;
   var suppressHash = false;
@@ -20,8 +20,62 @@
 
   var VIEWS = ['banks', 'bank', 'quiz', 'result', 'wrong', 'favorites', 'me', 'stats', 'history', 'support', 'settings', 'auth'];
 
+  /* ---------- 多轮次存档 ----------
+     一轮练习 = state.rounds 里的一个对象，各有自己的 id、题目快照、每题作答、
+     进度（index）和计时。新开一轮只是 push 一个新对象，旧的一轮原地不动，
+     所以“原先一轮的成绩 / 每题记录 / 进度”天然就被保留了下来。 */
+  function roundIndex(list, id) {
+    for (var i = 0; i < list.length; i += 1) { if (list[i].id === id) return i; }
+    return -1;
+  }
+
+  function findRound(s, id) {
+    if (!s || !id) return null;
+    var i = roundIndex(s.rounds || [], id);
+    return i >= 0 ? s.rounds[i] : null;
+  }
+
+  /**
+   * 把 state.session 做成一个“活的访问器”：
+   *   读 state.session  → 当前这一轮（currentRoundId 指向的那个对象，引用而非拷贝）
+   *   写 state.session  → 新开一轮（入册 + 设为当前）
+   *
+   * 它是 non-enumerable 的，所以 JSON.stringify 不会把它再存一份：
+   * 磁盘上永远只有 rounds 这一份数据，不会把同一轮存两遍。
+   * 好处是原来满地方写的 state.session 一行都不用改，依旧是对的。
+   */
+  function adoptRounds(s) {
+    var d = Object.getOwnPropertyDescriptor(s, 'session');
+    if (d && d.get) return s;
+    if (!Array.isArray(s.rounds)) s.rounds = [];
+    if (typeof s.currentRoundId !== 'string') s.currentRoundId = null;
+    Object.defineProperty(s, 'session', {
+      enumerable: false,
+      configurable: true,
+      get: function () { return findRound(s, s.currentRoundId); },
+      set: function (v) {
+        if (!v) { s.currentRoundId = null; return; }
+        var i = roundIndex(s.rounds, v.id);
+        if (i >= 0) s.rounds[i] = v; else s.rounds.push(v);
+        s.currentRoundId = v.id;
+      },
+    });
+    return s;
+  }
+
+  /** 轮次太多时丢最旧的（当前这一轮永远保留） */
+  function pruneRounds() {
+    if (state.rounds.length <= Store.MAX_ROUNDS) return;
+    var keep = [];
+    for (var i = state.rounds.length - 1; i >= 0; i -= 1) {
+      var r = state.rounds[i];
+      if (r.id === state.currentRoundId || keep.length < Store.MAX_ROUNDS - 1) keep.unshift(r);
+    }
+    state.rounds = keep;
+  }
+
   /* ---------- 基础 ---------- */
-  function save() { Store.save(state, Auth.ownerKey()); }
+  function save() { pruneRounds(); Store.save(state, Auth.ownerKey()); }
 
   function setView(view) {
     if (view === 'quiz' && (!state.session || state.session.finished || !state.session.questionIds.length)) view = 'banks';
@@ -75,10 +129,36 @@
   }
 
   /* ---------- 会话 ---------- */
+
+  /**
+   * 找“要拿去重做的那一轮”，优先级：
+   *   1. 调用方指定的轮次（测试记录里点某一轮的「错题重做」）；
+   *   2. 当前这一轮；
+   *   3. 当前这轮没错题，就往前找最近一轮有错题的。
+   */
+  function sourceRound(explicitId) {
+    if (explicitId) return findRound(state, explicitId);
+    var cur = state.session;
+    if (cur && Quiz.wrongQuestionIds(cur).length) return cur;
+    for (var i = state.rounds.length - 1; i >= 0; i -= 1) {
+      if (Quiz.wrongQuestionIds(state.rounds[i]).length) return state.rounds[i];
+    }
+    return cur;
+  }
+
+  /** “这一轮共几题 / 已答几题 / 错几题”，给按钮文案用 */
+  function roundWrongCount(round) {
+    return round ? Quiz.wrongQuestionIds(round).length : 0;
+  }
+
   function startSession(opts) {
     if (!opts.questionIds || !opts.questionIds.length) { toast('这个范围里没有题目'); return; }
+    // 赋给 state.session 就会新开一轮（旧的那一轮原地保留）
     state.session = Quiz.createSession(opts);
     state.view = 'quiz';
+    // 建轮次的同时就写一条记录：这样“轮次”和“记录”一一对应，
+    // 一开练就能在「测试记录」里看到它（哪怕一道都还没答），不会丢。
+    upsertHistory(false);
     save();
     render();
     startTimer();
@@ -161,7 +241,7 @@
 
   function enterAccount(owner, message) {
     stopTimer();
-    state = Store.load(owner);
+    state = adoptRounds(Store.load(owner));
     state.view = 'me';
     save();
     render();
@@ -171,7 +251,7 @@
   function switchToGuest() {
     stopTimer();
     Auth.logout();
-    state = Store.load('guest');
+    state = adoptRounds(Store.load('guest'));
     state.view = 'me';
     save();
     render();
@@ -290,12 +370,30 @@
         setView('quiz');
         return;
 
-      case 'discard':
-        state.session = null;
+      /* ---- 打开以前某一轮：从测试记录点回来，内容原样保留 ---- */
+      case 'open-round': {
+        var wantId = el.getAttribute('data-round');
+        var round = findRound(state, wantId);
+        if (!round) { toast('这一轮的记录已经不在了'); return; }
+        state.currentRoundId = round.id;
+        save();
+        setView(round.finished ? 'result' : 'quiz');
+        return;
+      }
+
+      case 'discard': {
+        // “放弃” = 真的丢掉这一轮（连它占的测试记录一起删），已交卷的历史轮次不受影响
+        var dropId = state.currentRoundId;
+        if (dropId) {
+          state.rounds = state.rounds.filter(function (r) { return r.id !== dropId; });
+          state.history = state.history.filter(function (h) { return h.id !== dropId; });
+        }
+        state.currentRoundId = null;
         save();
         render();
         toast('已放弃这次练习');
         return;
+      }
 
       /* ---- 开练 ---- */
       case 'start-all': {
@@ -372,9 +470,31 @@
           scopeLabel: '重刷做过的 ' + doneIds.length + ' 题',
           scopeType: 'ids',
           mode: 'redo',
+          origin: 'redo',
           bankId: bankR ? bankR.id : null,
           questionIds: doneIds,
         });
+        return;
+      }
+
+      /* ---- 错题重做：把“这一轮没做对的题”抽出来，组成一轮全新的练习。
+              原轮次原封不动地留在 rounds 里：成绩、每题作答、进度都不变，
+              随时能从「测试记录」点回去打开。新的一轮是完全独立的记录。 ---- */
+      case 'redo-wrong': {
+        var src = sourceRound(el.getAttribute('data-round'));
+        if (!src) { toast('还没有可以重做的轮次'); return; }
+        var wrongIds = Quiz.wrongQuestionIds(src);
+        if (!wrongIds.length) { toast('这一轮里没有做错的题'); return; }
+        startSession({
+          title: src.title,
+          scopeLabel: '错题重做 · ' + wrongIds.length + ' 题',
+          scopeType: 'wrong',
+          bankId: src.bankId,
+          parentId: src.id,
+          origin: 'wrong-redo',
+          questionIds: wrongIds,
+        });
+        toast('已抽出 ' + wrongIds.length + ' 道错题，开了一轮新的（原来的那轮还在）');
         return;
       }
 
@@ -475,29 +595,24 @@
         return;
 
       case 'clear-history':
-        if (!global.confirm('确定清空测试记录吗？')) return;
+        if (!global.confirm('确定清空测试记录吗？每一轮的详细作答也会一起删掉（当前这一轮会留下）。')) return;
         state.history = [];
+        state.rounds = state.rounds.filter(function (r) { return r.id === state.currentRoundId; });
         save();
         render();
         toast('测试记录已清空');
         return;
 
       /* ---- 结果页 ---- */
-      case 'retry-wrong': {
-        if (!s) return;
-        var wrongIds = Quiz.wrongQuestionIds(s);
-        if (!wrongIds.length) { toast('没有错题'); return; }
-        startSession({ title: s.title, scopeLabel: '错题重练', scopeType: 'ids', questionIds: wrongIds });
-        return;
-      }
-
       case 'retry-all': {
         if (!s) return;
         startSession({
           title: s.title,
-          scopeLabel: s.scopeLabel,
+          scopeLabel: '重刷 · ' + s.scopeLabel,
           scopeType: s.scopeType,
           mode: 'redo',
+          origin: 'redo',
+          parentId: s.id,
           bankId: s.bankId,
           chapterIds: s.chapterIds,
           questionIds: s.questionIds.slice(),
@@ -557,9 +672,9 @@
       }
 
       case 'reset-all':
-        if (!global.confirm('确定清空当前身份的所有本地数据吗？（收藏、错题本、记录、进度都会没）')) return;
+        if (!global.confirm('确定清空当前身份的所有本地数据吗？（收藏、错题本、记录、每一轮的进度都会没）')) return;
         Store.clear(Auth.ownerKey());
-        state = Store.defaults();
+        state = adoptRounds(Store.defaults());
         save();
         render();
         toast('已清空');

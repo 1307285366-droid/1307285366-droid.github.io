@@ -123,7 +123,8 @@
     return idsOf(allQuestions(bank));
   }
 
-  /** 组卷：把题目 id 快照进会话，之后即使题库变化也不影响本次作答 */
+  /** 组卷：把题目 id 快照进会话，之后即使题库变化也不影响本次作答
+      每一次 createSession 就是“新的一轮”，id 全新，所以旧轮次不会被覆盖。 */
   function createSession(opts) {
     opts = opts || {};
     return {
@@ -134,6 +135,9 @@
       // practice = 普通练习（做错会进错题本）
       // redo    = 重刷做过的题（新结果覆盖旧的，但不动错题本）
       mode: opts.mode === 'redo' ? 'redo' : 'practice',
+      // 这一轮是怎么来的：'' 普通练习 / 'wrong-redo' 错题重做 / 'redo' 重刷
+      origin: opts.origin || '',
+      parentId: opts.parentId || null, // 从哪一轮派生出来的（用来“回到上一轮”）
       bankId: opts.bankId || null,
       chapterIds: opts.chapterIds || [],
       questionIds: (opts.questionIds || []).slice(),
@@ -277,10 +281,12 @@
   function recordOf(session, finished) {
     var st = stats(session);
     return {
-      id: session.id,
+      id: session.id,          // 与轮次 id 一致，测试记录里点一条就能回到那一轮
       title: session.title,
       scopeLabel: session.scopeLabel,
       mode: session.mode || 'practice',
+      origin: session.origin || '',
+      parentId: session.parentId || null,
       accuracy: st.accuracy,
       correct: st.correct,
       wrong: st.wrong,
