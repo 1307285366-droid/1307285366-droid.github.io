@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#fff7fa" />
+  <title>狂k重点 · 纯静态刷题</title>
+  <link rel="stylesheet" href="assets/css/app.css" />
+</head>
+<body>
+  <!-- 单页容器：所有视图由 assets/js/ui.js 渲染到这里 -->
+  <main id="app" class="app" aria-live="polite">
+    <div class="empty">正在加载题库…</div>
+  </main>
+
+  <!-- 题库数据（由 tools/convert.mjs 从 data/raw/*.md 生成） -->
+  <script src="data/banks.js"></script>
+  <!-- 工具 / 账号 / 持久化 / 答题逻辑 / 客服 / 视图 / 应用 -->
+  <script src="assets/js/util.js"></script>
+  <script src="assets/js/auth.js"></script>
+  <script src="assets/js/storage.js"></script>
+  <script src="assets/js/quiz.js"></script>
+  <script src="assets/js/support.js"></script>
+  <script src="assets/js/ui.js"></script>
+  <script src="assets/js/app.js"></script>
+</body>
+</html>

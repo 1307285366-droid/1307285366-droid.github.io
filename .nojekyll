@@ -1,0 +1,2 @@
+# GitHub Pages 必备：让 GitHub 不要用 Jekyll 处理这个仓库
+# （否则 data/raw/*.md 会被当成网页去渲染，可能直接导致构建失败）
