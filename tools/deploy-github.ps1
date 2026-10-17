@@ -25,7 +25,12 @@ function Say($msg) {
 }
 
 function Run($exe, $argv) {
-  $out = & $exe @argv 2>&1 | Out-String
+  # stderr 也一起收下来。PowerShell 会把原生程序写到 stderr 的内容包装成
+  # NativeCommandError，直接 2>&1 会渲染成一大块红色"报错"，
+  # 其实里面常常只是 git 的 warning。这里统一转成普通文本再打印。
+  $out = & $exe @argv 2>&1 | ForEach-Object {
+    if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.ToString() } else { $_ }
+  } | Out-String
   if ($out.Trim()) { Say $out.Trim() }
   return $LASTEXITCODE
 }
@@ -135,13 +140,11 @@ if ($LASTEXITCODE -ne 0) {
 
 # ---------- 4. 开启 Pages ----------
 Say '== 4/5 开启 GitHub Pages =='
-$pagesBody = @('api', '-X', 'POST', "repos/$User/$Repo/pages", '-f', 'source[branch]=main', '-f', 'source[path]=/')
-& gh @pagesBody 2>&1 | Out-String | ForEach-Object { if ($_.Trim()) { Say $_.Trim() } }
-if ($LASTEXITCODE -ne 0) {
+$rc = Run 'gh' @('api', '-X', 'POST', "repos/$User/$Repo/pages", '-f', 'source[branch]=main', '-f', 'source[path]=/')
+if ($rc -ne 0) {
   # 已经开过 Pages 就会 409/422，这里用 PUT 把源覆盖成 main，重复跑也没事。
   Say '（POST 失败，改成 PUT 覆盖设置）'
-  & gh api -X PUT "repos/$User/$Repo/pages" -f 'source[branch]=main' -f 'source[path]=/' 2>&1 |
-    Out-String | ForEach-Object { if ($_.Trim()) { Say $_.Trim() } }
+  Run 'gh' @('api', '-X', 'PUT', "repos/$User/$Repo/pages", '-f', 'source[branch]=main', '-f', 'source[path]=/') | Out-Null
 }
 
 # ---------- 5. 等构建完成 ----------

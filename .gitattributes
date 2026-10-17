@@ -1,0 +1,16 @@
+# 统一换行符：仓库里和检出后都保持 LF。
+# 否则 Windows 上 git 的 core.autocrlf=true 会在每次 add 时刷一堆
+# "LF will be replaced by CRLF" 警告，被 PowerShell 渲染成红色报错块。
+* text=auto eol=lf
+
+# 这些是二进制，别做换行转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.pdf binary
+*.zip binary
