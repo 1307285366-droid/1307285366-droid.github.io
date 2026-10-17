@@ -42,23 +42,56 @@ if (-not $User) { Say '❌ 拿不到 gh 登录账号，请先执行 gh auth logi
 Say "GitHub 账号: $User"
 
 # ---------- 1. 选仓库名 ----------
+# 1a. 本地已经绑过 origin，且该仓库在 GitHub 上确实存在 → 直接沿用。
+#      （上次发布已经建好了仓库，这次只需要把新代码推上去，链接不能变）
+if (-not $Repo) {
+  $remote = (git remote get-url origin 2>$null | Out-String).Trim()
+  if ($remote) {
+    $owner = ($remote -split '/')[-2]
+    $tail = ($remote -split '/')[-1] -replace '\.git$', ''
+    if ($tail -and $owner -eq $User) {
+      gh repo view "$User/$tail" 2>$null | Out-Null
+      if ($LASTEXITCODE -eq 0) {
+        $Repo = $tail
+        Say "沿用本地已绑的远端：$User/$Repo（链接不变）"
+      } else {
+        Say "本地 origin 指向 $User/$tail，但那边没有这个仓库，重新挑一个"
+      }
+    }
+  }
+}
+
+# 1b. 还没有定下仓库名：优先用户站点（链接最短）。
+#      注意：用户站点「有东西」不代表被别的项目占用，
+#      要先看它的 README 是不是本项目，否则会把已经跑起来的站点认成别人的。
 if (-not $Repo) {
   $userSite = "$User.github.io"
   gh repo view "$User/$userSite" 2>$null | Out-Null
-  $exists = ($LASTEXITCODE -eq 0)
-  if ($exists) {
-    # 仓库存在，但如果是空的，仍然可以用（链接最短）
-    $contents = gh api "repos/$User/$userSite/contents" 2>$null | Out-String
-    if ($contents -match '^\s*\[\s*\]\s*$') {
-      $Repo = $userSite
-      Say "已有空的用户站点仓库，直接用它（链接最短）"
-    } else {
-      $Repo = 'kuangk-zhongdian'
-      Say "用户站点仓库 $userSite 里已经有东西了，改用项目仓库 $Repo"
-    }
-  } else {
+  if ($LASTEXITCODE -ne 0) {
     $Repo = $userSite
     Say "用户站点仓库还不存在，建一个（链接最短）"
+  } else {
+    $isOurs = $false
+    $raw = (gh api "repos/$User/$userSite/readme" --jq '.content' 2>$null | Out-String)
+    if ($raw.Trim()) {
+      try {
+        $text = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(($raw -replace '\s', '')))
+        if ($text -match '狂k重点') { $isOurs = $true }
+      } catch { }
+    }
+    if ($isOurs) {
+      $Repo = $userSite
+      Say "用户站点仓库 $userSite 里就是本项目，继续用它（链接最短）"
+    } else {
+      $contents = gh api "repos/$User/$userSite/contents" 2>$null | Out-String
+      if ($contents -match '^\s*\[\s*\]\s*$') {
+        $Repo = $userSite
+        Say "已有空的用户站点仓库，直接用它（链接最短）"
+      } else {
+        $Repo = 'kuangk-zhongdian'
+        Say "用户站点仓库 $userSite 被别的项目占用了，改用项目仓库 $Repo"
+      }
+    }
   }
 }
 Say "仓库: $User/$Repo"
@@ -86,13 +119,18 @@ if ($status.Trim()) {
 Say '== 3/5 推送 =='
 gh repo view "$User/$Repo" 2>$null | Out-Null
 if ($LASTEXITCODE -ne 0) {
-  Say "远端不存在，创建并推送…"
-  Run 'gh' @('repo', 'create', $Repo, '--public', '--source=.', '--remote=origin', '--push') | Out-Null
-} else {
-  Say '远端已存在，设置 origin 并推送…'
-  git remote remove origin 2>$null | Out-Null
-  Run 'git' @('remote', 'add', 'origin', "https://github.com/$User/$Repo.git") | Out-Null
-  Run 'git' @('push', '-u', 'origin', 'main') | Out-Null
+  # 只建空仓库，不加 --remote/--push：避免本地已有 origin 时 gh 报
+  # “Unable to add remote origin” 而把后面的推送整段跳过。
+  Say '远端不存在，先在 GitHub 上建仓库…'
+  Run 'gh' @('repo', 'create', "$User/$Repo", '--public') | Out-Null
+}
+Say "把 origin 指向 $User/$Repo 并推送…"
+git remote remove origin 2>$null | Out-Null
+Run 'git' @('remote', 'add', 'origin', "https://github.com/$User/$Repo.git") | Out-Null
+Run 'git' @('push', '-u', 'origin', 'main') | Out-Null
+if ($LASTEXITCODE -ne 0) {
+  Say '❌ 推送失败，分支没上去，后面几步都不会生效，先停下。'
+  exit 1
 }
 
 # ---------- 4. 开启 Pages ----------
@@ -100,6 +138,7 @@ Say '== 4/5 开启 GitHub Pages =='
 $pagesBody = @('api', '-X', 'POST', "repos/$User/$Repo/pages", '-f', 'source[branch]=main', '-f', 'source[path]=/')
 & gh @pagesBody 2>&1 | Out-String | ForEach-Object { if ($_.Trim()) { Say $_.Trim() } }
 if ($LASTEXITCODE -ne 0) {
+  # 已经开过 Pages 就会 409/422，这里用 PUT 把源覆盖成 main，重复跑也没事。
   Say '（POST 失败，改成 PUT 覆盖设置）'
   & gh api -X PUT "repos/$User/$Repo/pages" -f 'source[branch]=main' -f 'source[path]=/' 2>&1 |
     Out-String | ForEach-Object { if ($_.Trim()) { Say $_.Trim() } }
@@ -118,7 +157,15 @@ for ($i = 1; $i -le 25; $i++) {
 
 Say ''
 Say '========================================='
-if ($built) { Say '✅ 发布成功' } else { Say '⚠️ 还没跑完，稍等一两分钟再刷新' }
+if ($built) {
+  # Pages 报 built 不等于真能打开，再实际 GET 一下。
+  $http = '没测出来'
+  try {
+    $resp = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 30
+    $http = "HTTP $($resp.StatusCode)"
+  } catch { $http = "打不开（$($_.Exception.Message)）" }
+  Say "✅ 发布成功（$http）"
+} else { Say '⚠️ 还没跑完，稍等一两分钟再刷新' }
 Say "链接: $url"
 Say "仓库: https://github.com/$User/$Repo"
 Say '========================================='
