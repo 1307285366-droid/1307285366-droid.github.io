@@ -199,9 +199,12 @@
    * 提交后记账：已练记录 / 累计 / 错题本 / 测试记录。
    * 规则：
    *   - 已练记录（用于正确率）总是被新结果覆盖；
-   *   - 错题本**只增不减**，不会因为一次答对就自动消失，只能手动移出；
-   *   - 重刷模式（mode === 'redo'）完全不碰错题本。
+   *   - 错题本里的题**累计答对 2 次**会自动移出；之后答错不会清零已累计的次数；
+   *   - 重刷模式（mode === 'redo'）完全不碰错题本；
+   *   - 移出错题本不会删掉任何一轮的存档，测试记录里仍能打开当时那一轮回看错题。
    */
+  var RIGHT_TO_CLEAR = 2;   // 累计答对几次自动移出错题本
+
   function accountAnswer(qid, rec) {
     var entry = Quiz.questionById(qid);
     if (!entry || !rec) return;
@@ -211,16 +214,28 @@
     if (!entry.q.invalid) {
       state.done[qid] = rec.correct ? 1 : 0;   // 重刷时新结果直接覆盖旧结果
       state.totals.answered += 1;
+      var w = state.wrong[qid];
+
       if (rec.correct) {
         state.totals.correct += 1;
-        if (redo) toast('答对了，已覆盖原来的记录');
-        else if (s && s.scopeType === 'wrong') toast('答对了，可点「已掌握，移出」清掉它');
-        else toast('答对了');
+        if (redo) {
+          toast('答对了，已覆盖原来的记录');
+        } else if (w) {
+          w.right = (w.right || 0) + 1;
+          if (w.right >= RIGHT_TO_CLEAR) {
+            delete state.wrong[qid];
+            toast('已答对 ' + RIGHT_TO_CLEAR + ' 次，自动移出错题本（测试记录里仍可回看）');
+          } else {
+            toast('答对了，再答对 ' + (RIGHT_TO_CLEAR - w.right) + ' 次就自动移出错题本');
+          }
+        } else {
+          toast('答对了');
+        }
       } else if (redo) {
         toast('答错了，记录已更新（错题本不变）');
       } else {
-        var w = state.wrong[qid] || (state.wrong[qid] = { times: 0, at: 0 });
-        w.times += 1;
+        if (!w) w = state.wrong[qid] = { times: 0, at: 0, right: 0 };
+        w.times += 1;   // 答错不清零 right：累计答对次数继续保留
         w.at = Date.now();
         toast('答错了，已收进错题本');
       }

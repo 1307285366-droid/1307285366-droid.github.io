@@ -8,7 +8,7 @@
  *   - 交卷后能看到对几道错几道 + 简单分析
  *   - 重刷做过的题：新结果覆盖旧结果，但错题本不动
  *   - 错题重做：把一轮里做错的题抽出来另开一轮，原轮原样保留、可回看
- *   - 错题本只增不减，只能手动移出
+ *   - 错题本累计答对 2 次自动移出（答错不清零），手动移出仍然可用；历史轮次保留可回看
  * 用法：node tools/render-test.mjs
  */
 import fs from 'node:fs';
@@ -241,7 +241,7 @@ for (const k of Q1.answer) click({ action: 'pick', key: k });
 click({ action: 'submit' });
 check('在新一轮答对后，原轮次依旧不变',
   JSON.stringify(findRound(origRoundId)) === origSnapshot);
-check('在新一轮答对，也不会把题从错题本里移走', Boolean(data('guest').wrong[Q1.id]));
+check('错题重做里答对 1 次后，还差一次才自动移出', Boolean(data('guest').wrong[Q1.id]));
 check('新一轮自己记下了这次作答', curRound().answers[Q1.id].correct === true);
 check('错题重做会把「最新掌握情况」更新为答对', data('guest').done[Q1.id] === 1);
 click({ action: 'finish' });
@@ -253,19 +253,48 @@ check('从新一轮能一键回到上一轮，内容依旧不变', (function () 
     && JSON.stringify(findRound(origRoundId)) === origSnapshot;
 })());
 
-/* ================= 错题本：只增不减 ================= */
+/* ================= 错题本：累计答对 2 次自动移出 ================= */
+
+/* 先答错一次，验证不会把已累计的答对次数清零 */
+click({ action: 'go', view: 'banks' });
+click({ action: 'open-bank', bank: 'web' });
+click({ action: 'start-chapter', bank: 'web', chapter: CH0.id });
+click({ action: 'pick', key: BAD_KEY });
+click({ action: 'submit' });
+check('答错一次不会清零已累计的答对次数', data('guest').wrong[Q1.id].right === 1);
+
 click({ action: 'go', view: 'wrong' });
 check('错题页打开且按题型分组', html().includes('道错题') && html().includes('单选题'));
+check('错题页顶部显示规则提示语', html().includes('wrong-tip') && html().includes('累计答对 2 次'));
+check('错题卡片显示累计答对进度', html().includes('已答对 1/2'));
 const wrongQid = Object.keys(data('guest').wrong)[0];
 const wrongQ = Quiz.questionById(wrongQid).q;
 click({ action: 'start-wrong-type', type: wrongQ.type });
 check('从错题页可以直接开练', curRound().questionIds.length === 1);
 for (const k of wrongQ.answer) click({ action: 'pick', key: k });
 click({ action: 'submit' });
-check('在错题本里答对也不会自动移出', Boolean(data('guest').wrong[wrongQid]));
+check('累计答对第 2 次后自动移出', !data('guest').wrong[wrongQid]);
+check('自动移出后错题数归零', Object.keys(data('guest').wrong).length === 0);
+
+/* 移出后，历史记录里仍能回看当时做错的题 */
+click({ action: 'go', view: 'wrong' });
+check('自动移出后错题本显示为空，但规则提示仍在', html().includes('还没有错题') && html().includes('wrong-tip'));
+click({ action: 'go', view: 'history' });
+check('测试记录里仍保留着原来那一轮', html().includes('打开这一轮'));
+click({ action: 'open-round', round: origRoundId });
+check('打开原来的轮次仍能看到当时的错题回顾',
+  html().includes('错题回顾（1）') && html().includes('用于为页面添加视频的标签'));
+
+/* 手动移出仍然可用：先重新做错一题，再手动移出 */
+click({ action: 'go', view: 'banks' });
+click({ action: 'open-bank', bank: 'web' });
+click({ action: 'start-chapter', bank: 'web', chapter: CH0.id });
+click({ action: 'pick', key: BAD_KEY });
+click({ action: 'submit' });
+check('答错后重新收进错题本', Boolean(data('guest').wrong[wrongQid]));
 click({ action: 'go', view: 'wrong' });
 click({ action: 'remove-wrong', qid: wrongQid });
-check('手动“已掌握，移出”才真的移出', !data('guest').wrong[wrongQid]);
+check('手动“已掌握，移出”仍然可用', !data('guest').wrong[wrongQid]);
 
 /* ================= 收藏 / 我的 ================= */
 click({ action: 'go', view: 'favorites' });

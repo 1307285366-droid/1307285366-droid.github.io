@@ -19,7 +19,7 @@
       view: 'banks',      // 由 app.js 的路由维护
       bankId: null,       // 当前打开的题库
       favorites: {},      // { [bankId]: string[] }
-      wrong: {},          // 错题本 { [qid]: { times, at } }
+      wrong: {},          // 错题本 { [qid]: { times, at, right } }（right = 累计答对次数，满 2 自动移出）
       done: {},           // 做过的题 { [qid]: 1 答对 / 0 答错 }（最后一次结果）
       totals: { answered: 0, correct: 0 }, // 累计提交次数 / 答对次数
       history: [],        // 测试记录（最近的在前）

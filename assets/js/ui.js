@@ -19,6 +19,31 @@
 
   function pct(n, d) { return d ? Math.round((n / d) * 100) : 0; }
 
+  /* 内联 SVG 图标：比 emoji 更统一，颜色跟随 currentColor */
+  var ICONS = {
+    back: '<path d="M15 4.5 7.5 12l7.5 7.5"/>',
+    star: '<path d="M12 3.4l2.65 5.37 5.93.86-4.29 4.18 1.01 5.9L12 16.93l-5.3 2.78 1.01-5.9L3.42 9.63l5.93-.86z"/>',
+    share: '<path d="M7.5 16.5 16.5 7.5"/><path d="M9.5 7.5h7v7"/>',
+    chevron: '<path d="M9 5.5 15.5 12 9 18.5"/>',
+    chart: '<path d="M4 19.5h16"/><path d="M7 16.5v-4"/><path d="M12 16.5v-8"/><path d="M17 16.5v-5.5"/>',
+    clock: '<circle cx="12" cy="12" r="8.2"/><path d="M12 7.5V12l3.2 1.9"/>',
+    redo: '<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4.2h-4.2"/>',
+    target: '<circle cx="12" cy="12" r="8.2"/><circle cx="12" cy="12" r="4.2"/><circle cx="12" cy="12" r="1.1" fill="currentColor" stroke="none"/>',
+    book: '<path d="M4.5 5.8A2.8 2.8 0 0 1 7.3 3H19v14.8H7.3a2.8 2.8 0 0 0-2.8 2.8z"/><path d="M19 17.8v3.2H7.3a2.8 2.8 0 0 1-2.8-2.8"/>',
+    chat: '<path d="M20 11.6c0 4.1-3.6 7.4-8 7.4-1 0-2-.2-2.9-.5L4.5 20l1-3.5A7 7 0 0 1 4 11.6C4 7.5 7.6 4.2 12 4.2s8 3.3 8 7.4z"/><path d="M8.5 11.5h.01M12 11.5h.01M15.5 11.5h.01"/>',
+    settings: '<path d="M4 7.5h6"/><path d="M14 7.5h6"/><circle cx="12" cy="7.5" r="2.2"/><path d="M4 16.5h3"/><path d="M11 16.5h9"/><circle cx="9" cy="16.5" r="2.2"/>',
+    check: '<path d="M5 12.5l4.6 4.5L19 7.5"/>',
+    x: '<path d="M6.5 6.5l11 11"/><path d="M17.5 6.5l-11 11"/>',
+    warn: '<path d="M12 4.4 20.6 19.6H3.4z"/><path d="M12 9.8v4"/><path d="M12 16.4h.01"/>',
+    bulb: '<path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/>',
+  };
+
+  function ic(name) {
+    return '<svg class="ic-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+      + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'
+      + ' aria-hidden="true" focusable="false">' + (ICONS[name] || '') + '</svg>';
+  }
+
   function favCount(state) {
     var n = 0;
     Object.keys(state.favorites || {}).forEach(function (k) { n += (state.favorites[k] || []).length; });
@@ -43,7 +68,7 @@
   function topbar(title, backView, extra) {
     return ''
       + '<div class="topbar">'
-      + (backView ? '<button class="icon-btn" data-action="go" data-view="' + backView + '" title="返回">←</button>' : '')
+      + (backView ? '<button class="icon-btn" data-action="go" data-view="' + backView + '" title="返回" aria-label="返回">' + ic('back') + '</button>' : '')
       + '<div class="title">' + esc(title) + '</div>'
       + '<span class="spacer"></span>'
       + (extra || '')
@@ -66,13 +91,13 @@
       + '<button class="bank-row" data-action="open-bank" data-bank="' + bank.id + '">'
       + '  <div class="bank-row-head">'
       + '    <span class="bank-row-title">' + esc(bank.title) + '</span>'
-      + '    <span class="bank-row-go">›</span>'
+      + '    <span class="bank-row-go">' + ic('chevron') + '</span>'
       + '  </div>'
       + '  <div class="meta-line">'
       + '    <span class="tag">' + st.chapters + ' 章 · ' + st.total + ' 题</span>'
       + '    <span class="tag">' + typeLine(st) + '</span>'
       + (st.invalid ? '<span class="tag warn">' + st.invalid + ' 道不计分</span>' : '')
-      + (favs ? '<span class="tag fav">★ ' + favs + '</span>' : '')
+      + (favs ? '<span class="tag fav">' + ic('star') + ' ' + favs + '</span>' : '')
       + '  </div>'
       + '  <div class="bank-bar"><i style="width:' + pct(done, st.valid) + '%"></i></div>'
       + '</button>';
@@ -90,7 +115,7 @@
       var st = Quiz.stats(s);
       html += ''
         + '<section class="card stack" style="margin-top:14px">'
-        + '  <div class="row"><h2>继续上次练习</h2><span class="spacer"></span><span class="tag">⏱ ' + U.fmtDuration(s.elapsedMs) + '</span></div>'
+        + '  <div class="row"><h2>继续上次练习</h2><span class="spacer"></span><span class="tag">' + ic('clock') + ' ' + U.fmtDuration(s.elapsedMs) + '</span></div>'
         + '  <div>' + esc(s.title) + (s.scopeLabel ? ' · ' + esc(s.scopeLabel) : '')
         + '     · 进度 ' + (s.index + 1) + '/' + s.questionIds.length + ' · 已答对 ' + st.correct + '</div>'
         + '  <div class="actions">'
@@ -146,7 +171,7 @@
         + '    <div class="chapter-row-title">' + esc(c.title) + '</div>'
         + '    <div class="muted tiny">' + c.questions.length + ' 题 · ' + typeLine(counts) + ' · 已练 ' + cd + '/' + c.questions.length + '</div>'
         + '  </div>'
-        + '  <span class="chapter-row-go">开始 ›</span>'
+        + '  <span class="chapter-row-go">开始' + ic('chevron') + '</span>'
         + '</button>';
     });
     html += '</div>';
@@ -174,17 +199,17 @@
 
     var html = ''
       + '<div class="topbar">'
-      + '  <button class="icon-btn" data-action="quit" title="返回题库">←</button>'
+      + '  <button class="icon-btn" data-action="quit" title="返回题库" aria-label="返回题库">' + ic('back') + '</button>'
       + '  <div class="title">' + esc(s.title) + (s.scopeLabel ? ' · ' + esc(s.scopeLabel) : '') + '</div>'
       + '  <span class="spacer"></span>'
-      + '  <button class="icon-btn' + (fav ? ' active' : '') + '" data-action="star" title="收藏本题">' + (fav ? '★' : '☆') + '</button>'
+      + '  <button class="icon-btn' + (fav ? ' active' : '') + '" data-action="star" title="收藏本题" aria-label="收藏本题">' + ic('star') + '</button>'
       + '</div>'
       + '<div class="quiz-head">'
       + '  <span>第 <b>' + (s.index + 1) + '</b> / ' + s.questionIds.length + ' 题</span>'
       + '  <span class="spacer"></span>'
       + '  <span>答对 <b>' + st.correct + '</b></span>'
       + '  <span>· 已作答 ' + st.answered + '</span>'
-      + (showTimer ? '<span id="timer">⏱ ' + U.fmtDuration(s.elapsedMs) + '</span>' : '')
+      + (showTimer ? '<span id="timer">' + ic('clock') + ' ' + U.fmtDuration(s.elapsedMs) + '</span>' : '')
       + (wrongNow ? '<button class="mini-btn" data-action="redo-wrong">错题重做 ' + wrongNow + '</button>' : '')
       + '</div>'
       + '<div class="progress"><i style="width:' + pct(s.index + 1, s.questionIds.length) + '%"></i></div>';
@@ -199,7 +224,7 @@
     // 一提交就立刻把答案摆到最上面，不用等交卷、也不用往下找
     if (submitted && !q.invalid) {
       html += '<div class="answer-strip ' + (rec.correct ? 'ok' : 'bad') + '">'
-        + '<span class="as-label">' + (rec.correct ? '✔ 答对了' : '✘ 答错了') + '</span>'
+        + '<span class="as-label">' + ic(rec.correct ? 'check' : 'x') + (rec.correct ? ' 答对了' : ' 答错了') + '</span>'
         + '<span class="as-main">正确答案 <b>' + q.answer.join('、') + '</b></span>'
         + '<span class="spacer"></span>'
         + '<span class="as-you">你选 ' + (rec.picked.length ? rec.picked.join('、') : '未选') + '</span>'
@@ -208,7 +233,7 @@
 
     if (q.invalid) {
       html += '<div class="verdict skip" style="margin:0 0 12px">'
-        + '<div class="verdict-title">⚠ 本题不计分</div>'
+        + '<div class="verdict-title">' + ic('warn') + ' 本题不计分</div>'
         + '<div class="small">' + esc(q.issue) + '。为遵守“不修改题库内容”，此处仅标注异常，原始题干/选项/答案保持原样。</div>'
         + '</div>';
     }
@@ -241,10 +266,10 @@
       if (q.invalid) {
         html += '<div class="verdict skip"><div class="verdict-title">已跳过（数据异常，不计分）</div></div>';
       } else if (rec.correct) {
-        html += '<div class="verdict ok"><div class="verdict-title">✔ 回答正确</div>'
+        html += '<div class="verdict ok"><div class="verdict-title">' + ic('check') + ' 回答正确</div>'
           + '<div class="small">正确答案：<b>' + q.answer.join('、') + '</b></div></div>';
       } else {
-        html += '<div class="verdict bad"><div class="verdict-title">✘ 回答错误</div>'
+        html += '<div class="verdict bad"><div class="verdict-title">' + ic('x') + ' 回答错误</div>'
           + '<div class="small">正确答案：<b>' + q.answer.join('、') + '</b>　你的答案：'
           + (rec.picked.length ? rec.picked.join('、') : '未选') + '</div></div>';
       }
@@ -297,7 +322,7 @@
     });
 
     var html = topbar('本次成绩', 'banks',
-      '<button class="icon-btn" data-action="share" title="分享成绩">↗</button>')
+      '<button class="icon-btn" data-action="share" title="分享成绩" aria-label="分享成绩">' + ic('share') + '</button>')
       + '<section class="card center">'
       + '  <div class="score-ring" style="--p:' + st.accuracy + '">'
       + '    <div class="score-num">' + st.accuracy + '%</div>'
@@ -376,6 +401,7 @@
       + '  <div class="row" style="gap:8px">' + typeBadge(it.q.type)
       + '<span class="muted tiny">' + esc(it.bank.title) + ' · 原题号 ' + it.q.no + '</span>'
       + '<span class="spacer"></span>'
+      + (it.right ? '<span class="tag ok">已答对 ' + it.right + '/2</span>' : '')
       + (it.times > 1 ? '<span class="tag bad">错 ' + it.times + ' 次</span>' : '')
       + '</div>'
       + '  <div class="review-stem" style="margin-top:6px">' + U.renderRich(it.q.stem) + '</div>'
@@ -394,13 +420,17 @@
     var html = topbar('错题本', 'banks',
       total ? '<button class="btn small" data-action="clear-wrong">清空</button>' : '');
 
+    // 错题规则提示：固定在页面顶部，空错题本时也显示
+    html += '<div class="wrong-tip">' + ic('bulb')
+      + '<span>同一道题<b>累计答对 2 次</b>就会自动移出错题本，答错不会清零已答对的次数；移出后仍可在「我的 → 测试记录」里打开那一轮回看错题。</span>'
+      + '</div>';
+
     if (!total) {
       return html + '<div class="empty">还没有错题 🎉<br><span class="tiny">做错的题会自动收进这里，可以按题型重练。</span></div>';
     }
 
     html += '<section class="card">'
       + '<div class="row"><h2>共 ' + total + ' 道错题</h2><span class="spacer"></span></div>'
-      + '<div class="muted small" style="margin-top:6px">错题本只增不减：在这里答对不会自动消失，确认掌握了再点「已掌握，移出」。</div>'
       + '<div class="actions">'
       + TYPE_ORDER.filter(function (t) { return groups[t].length; }).map(function (t) {
           return '<button class="btn btn-ghost" data-action="start-wrong-type" data-type="' + t + '">练' + TYPE_LABEL[t] + '（' + groups[t].length + '）</button>';
@@ -486,28 +516,32 @@
       + '</section>';
 
     html += '<div class="list" style="margin-top:14px">'
-      + navRow('stats', '📊', '统计分析', '')
-      + navRow('history', '🕘', '测试记录', String(histN))
-      + '<button class="nav-row" data-action="redo-done"><span class="nav-ic">🔁</span>'
-      + '<span class="nav-label">重刷做过的题</span>'
-      + '<span class="nav-meta">' + doneN + '</span><span class="nav-go">›</span></button>'
-      + '<button class="nav-row" data-action="redo-wrong"><span class="nav-ic">🎯</span>'
-      + '<span class="nav-label">错题重做</span>'
-      + '<span class="nav-meta">' + esc(redoMeta) + '</span><span class="nav-go">›</span></button>'
-      + navRow('wrong', '📕', '错题本', String(wrongN))
-      + navRow('favorites', '★', '我的收藏', String(favN))
-      + navRow('support', '💬', '智能客服', '')
-      + navRow('settings', '⚙️', '设置', '')
+      + navRow('stats', 'chart', '统计分析', '')
+      + navRow('history', 'clock', '测试记录', String(histN))
+      + navButton('redo-done', 'redo', '重刷做过的题', doneN)
+      + navButton('redo-wrong', 'target', '错题重做', redoMeta)
+      + navRow('wrong', 'book', '错题本', String(wrongN))
+      + navRow('favorites', 'star', '我的收藏', String(favN))
+      + navRow('support', 'chat', '智能客服', '')
+      + navRow('settings', 'settings', '设置', '')
       + '</div>';
     return html;
   }
 
   function navRow(view, icon, label, meta) {
     return '<button class="nav-row" data-action="go" data-view="' + view + '">'
-      + '<span class="nav-ic">' + icon + '</span>'
+      + '<span class="nav-ic">' + ic(icon) + '</span>'
       + '<span class="nav-label">' + esc(label) + '</span>'
       + '<span class="nav-meta">' + esc(meta || '') + '</span>'
-      + '<span class="nav-go">›</span></button>';
+      + '<span class="nav-go">' + ic('chevron') + '</span></button>';
+  }
+
+  function navButton(action, icon, label, meta) {
+    return '<button class="nav-row" data-action="' + action + '">'
+      + '<span class="nav-ic">' + ic(icon) + '</span>'
+      + '<span class="nav-label">' + esc(label) + '</span>'
+      + '<span class="nav-meta">' + esc(meta || '') + '</span>'
+      + '<span class="nav-go">' + ic('chevron') + '</span></button>';
   }
 
   /* ================= 统计分析 ================= */
@@ -735,10 +769,10 @@
 
   /* ================= 底部标签栏 ================= */
   var TABS = [
-    { key: 'banks', view: 'banks', icon: '📚', label: '题库' },
-    { key: 'wrong', view: 'wrong', icon: '📕', label: '错题' },
-    { key: 'favorites', view: 'favorites', icon: '★', label: '收藏' },
-    { key: 'me', view: 'me', icon: '👤', label: '我的' },
+    { key: 'banks', view: 'banks', label: '题库' },
+    { key: 'wrong', view: 'wrong', label: '错题' },
+    { key: 'favorites', view: 'favorites', label: '收藏' },
+    { key: 'me', view: 'me', label: '我的' },
   ];
 
   function tabKey(view) {
@@ -756,7 +790,8 @@
       var badge = tab.key === 'wrong' ? wrongN : (tab.key === 'favorites' ? favN : 0);
       var text = badge > 99 ? '99+' : String(badge || '');
       return '<button class="' + (on === tab.key ? 'on' : '') + '" data-action="go" data-view="' + tab.view + '">'
-        + '<span class="ic">' + tab.icon + (text ? '<i class="dot">' + text + '</i>' : '') + '</span>' + tab.label + '</button>';
+        + '<span class="tab-label">' + tab.label + '</span>'
+        + (text ? '<i class="dot">' + text + '</i>' : '') + '</button>';
     }).join('') + '</nav>';
   }
 

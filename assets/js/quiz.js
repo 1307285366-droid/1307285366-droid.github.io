@@ -311,8 +311,9 @@
   }
 
   /**
-   * 错题本：{ [qid]: { times, at } }，跨会话累积。
-   * 返回按“题库展示顺序 → 原题号”排序的 {q, bank, chapter, times, at} 列表。
+   * 错题本：{ [qid]: { times, at, right } }，跨会话累积。
+   * times = 累计答错次数，right = 累计答对次数（到 2 次自动移出）。
+   * 返回按“题库展示顺序 → 原题号”排序的 {q, bank, chapter, times, at, right} 列表。
    */
   function wrongEntries(book) {
     return Object.keys(book || {})
@@ -326,6 +327,7 @@
           chapter: entry.chapter,
           times: meta.times || 1,
           at: meta.at || 0,
+          right: meta.right || 0,
         };
       })
       .filter(Boolean)
